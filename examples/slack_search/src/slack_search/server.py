@@ -10,7 +10,13 @@ import httpx
 from fastmcp import FastMCP
 
 from slack_search._types import SlackMessage, Stats, ThreadContent, ThreadDetail, ThreadSummary
-from slack_search.client import get_settings, slack_get_thread, turso_query, voyage_embed
+from slack_search.client import (
+    SlackThreadNotFound,
+    get_settings,
+    slack_get_thread,
+    turso_query,
+    voyage_embed,
+)
 
 # -----------------------------------------------------------------------------
 # load categories at import time for dynamic type generation
@@ -317,6 +323,10 @@ async def get_thread_messages(key: str) -> ThreadContent | None:
     retrieves the full conversation content from Slack's API,
     not just the AI summary. requires SLACK_API_TOKEN.
 
+    note: threads may be deleted by Slack's retention policy.
+    if the thread no longer exists, returns ThreadContent with
+    deleted=True and empty messages.
+
     args:
         key: the thread key (from search/similar results)
 
@@ -333,10 +343,21 @@ async def get_thread_messages(key: str) -> ThreadContent | None:
     channel = parts[6]
     thread_ts = parts[7]
 
-    messages = await slack_get_thread(channel, thread_ts)
-
     ts_clean = thread_ts.replace(".", "")
     url = f"https://{workspace}.slack.com/archives/{channel}/p{ts_clean}"
+
+    try:
+        messages = await slack_get_thread(channel, thread_ts)
+    except SlackThreadNotFound:
+        # thread was deleted by Slack retention policy
+        return ThreadContent(
+            channel_id=channel,
+            thread_ts=thread_ts,
+            url=url,
+            messages=[],
+            message_count=0,
+            deleted=True,
+        )
 
     return ThreadContent(
         channel_id=channel,

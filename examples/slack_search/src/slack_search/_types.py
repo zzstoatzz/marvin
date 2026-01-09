@@ -143,6 +143,7 @@ class ThreadContent(BaseModel):
     url: str
     messages: list[SlackMessage]
     message_count: int
+    deleted: bool = False  # True if thread was deleted by Slack retention policy
 
 
 class Stats(BaseModel):

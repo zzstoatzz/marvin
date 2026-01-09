@@ -107,8 +107,19 @@ async def voyage_embed(text: str) -> list[float]:
     return data["data"][0]["embedding"]
 
 
+class SlackThreadNotFound(Exception):
+    """Raised when a Slack thread has been deleted or is inaccessible."""
+
+    pass
+
+
 async def slack_get_thread(channel: str, thread_ts: str) -> list[dict[str, Any]]:
-    """Fetch all messages from a Slack thread."""
+    """Fetch all messages from a Slack thread.
+
+    Raises:
+        SlackThreadNotFound: if the thread was deleted or is inaccessible
+        RuntimeError: for other Slack API errors
+    """
     settings = get_settings()
     if not settings.slack_api_token:
         raise RuntimeError("SLACK_API_TOKEN must be set to fetch thread content")
@@ -124,6 +135,12 @@ async def slack_get_thread(channel: str, thread_ts: str) -> list[dict[str, Any]]
         data = response.json()
 
     if not data.get("ok"):
-        raise RuntimeError(f"Slack API error: {data.get('error', 'unknown')}")
+        error = data.get("error", "unknown")
+        # thread_not_found, channel_not_found, message_not_found all indicate deleted content
+        if error in ("thread_not_found", "channel_not_found", "message_not_found"):
+            raise SlackThreadNotFound(
+                f"Thread {channel}/{thread_ts} not found (deleted or inaccessible)"
+            )
+        raise RuntimeError(f"Slack API error: {error}")
 
     return data.get("messages", [])
